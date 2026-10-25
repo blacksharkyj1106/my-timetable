@@ -1,4 +1,4 @@
-const $=id=>document.getElementById(id), KEY='my-course-semester-v1';
+const $=id=>document.getElementById(id), KEY='my-course-semester-v2', KEY_V1='my-course-semester-v1';
 const base=[['JavaScript 与 jQuery 开发技术',0,'14:00','15:35',0],['操作系统',1,'10:15','11:50',1],['Python 程序设计',1,'14:00','15:35',2],['JavaScript 与 jQuery 开发技术',2,'14:00','15:35',0],['SpringBoot 框架开发技术',2,'15:55','17:30',3],['SSM 框架开发技术',2,'19:00','20:40',4],['操作系统',3,'10:15','11:50',1],['Python 程序设计',3,'14:00','15:35',2],['Python 程序设计 · 附属课堂',3,'15:55','17:30',0],['SpringBoot 框架开发技术',4,'10:15','11:50',3],['SSM 框架开发技术',4,'14:00','15:35',4]];
 const originalSeed=()=>[8,9].flatMap(week=>base.map(([title,day,start,end,color],i)=>{let location=title==='操作系统'?'西教学区工程 2 号教学楼 · 工 2-D…':'西教学区工程 2 号教学楼';let memo='截图地点未完整显示，请补充完整教室。';if(i===8){location='';memo='截图原文：Python程序设计_06课堂的附属课堂_FS0（后续可能被截断），请确认地点。'}if(week===9&&(i===4||i===9)){title='SpringBoot 框架开发技术 · 附属课堂';location='';memo='截图原文：SpringBoot框架开发技术_09课堂的附属课堂，请确认地点。';color=5}return {id:week+'-'+i,week,title,day,start,end,color,location,memo,pending:true}}));
 // Fill only original, incomplete locations; preserve user edits and deleted lessons.
@@ -33,10 +33,25 @@ function migrateLegacy(saved){
  for(const row of saved)if(!defaults.some(c=>c.id===row.id))result.push(row);
  return result;
 }
+// Move data saved under the previous transcription (RULES_V1) onto the corrected timetable:
+// untouched lessons take the new rooms/weeks; lessons the user edited, added or deleted stay that way.
+function migrateTerm(saved){
+ const oldSeed=semesterSeed(RULES_V1),fields=['title','location','memo','week','day','start','end','color'];
+ let result=seed();
+ for(const original of oldSeed){
+  const row=saved.find(c=>c.id===original.id);
+  if(!row){result=result.filter(c=>c.id!==original.id);continue}
+  if(fields.every(k=>row[k]===original[k]))continue;
+  result=result.some(c=>c.id===row.id)?result.map(c=>c.id===row.id?row:c):[...result,row];
+ }
+ for(const row of saved)if(!oldSeed.some(c=>c.id===row.id))result.push(row);
+ return result;
+}
 let courses=seed(), storageFailed=false;
 try{
- const stored=localStorage.getItem(KEY);
+ const stored=localStorage.getItem(KEY),storedV1=localStorage.getItem(KEY_V1);
  if(stored!==null){const v=JSON.parse(stored);if(!Array.isArray(v)||!v.every(valid))throw Error();courses=v}
+ else if(storedV1!==null){const v=JSON.parse(storedV1);if(Array.isArray(v)&&v.every(valid))courses=migrateTerm(v);localStorage.setItem(KEY,JSON.stringify(courses))}
  else {const old=JSON.parse(localStorage.getItem('my-course-weeks-v1'));if(Array.isArray(old)&&old.every(valid))courses=migrateLegacy(old);localStorage.setItem(KEY,JSON.stringify(courses))}
 }catch{storageFailed=true}
 function valid(c){return c&&typeof c.id==='string'&&typeof c.title==='string'&&c.title.trim().length>0&&Number.isInteger(c.week)&&c.week>=1&&c.week<=LAST_WEEK&&Number.isInteger(c.day)&&c.day>=0&&c.day<7&&typeof c.location==='string'&&typeof c.memo==='string'&&Number.isInteger(c.color)&&c.color>=0&&c.color<6&&/^([01]\d|2[0-3]):[0-5]\d$/.test(c.start)&&/^([01]\d|2[0-3]):[0-5]\d$/.test(c.end)&&minute(c.start)>=500&&minute(c.end)<=1240&&minute(c.start)<minute(c.end)}
